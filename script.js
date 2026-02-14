@@ -5,6 +5,183 @@
 
 // === GLOBAL STATE ===
 let musicPlaying = false;
+let audioCtx = null;
+let melodyInterval = null;
+let gainNode = null;
+
+// === ROMANTIC PIANO SYNTHESIZER ===
+function createRomanticPiano() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // Master volume
+    gainNode = audioCtx.createGain();
+    gainNode.gain.value = 0.35;
+
+    // Reverb via convolver (simple delay-based)
+    const convolver = audioCtx.createConvolver();
+    const reverbTime = 2.5;
+    const sampleRate = audioCtx.sampleRate;
+    const length = sampleRate * reverbTime;
+    const impulse = audioCtx.createBuffer(2, length, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+        const data = impulse.getChannelData(ch);
+        for (let i = 0; i < length; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.5);
+        }
+    }
+    convolver.buffer = impulse;
+
+    // Dry/Wet mix
+    const dryGain = audioCtx.createGain();
+    dryGain.gain.value = 0.6;
+    const wetGain = audioCtx.createGain();
+    wetGain.gain.value = 0.4;
+
+    gainNode.connect(dryGain);
+    gainNode.connect(convolver);
+    convolver.connect(wetGain);
+    dryGain.connect(audioCtx.destination);
+    wetGain.connect(audioCtx.destination);
+
+    return { audioCtx, gainNode };
+}
+
+function playNote(freq, startTime, duration, velocity = 0.5) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const noteGain = audioCtx.createGain();
+
+    // Soft piano-like tone (sine + quiet harmonics)
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+
+    // Piano envelope: quick attack, gradual decay
+    const t = startTime;
+    noteGain.gain.setValueAtTime(0, t);
+    noteGain.gain.linearRampToValueAtTime(velocity, t + 0.02);
+    noteGain.gain.exponentialRampToValueAtTime(velocity * 0.3, t + duration * 0.5);
+    noteGain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+    osc.connect(noteGain);
+    noteGain.connect(gainNode);
+
+    osc.start(t);
+    osc.stop(t + duration);
+
+    // Add a subtle second harmonic for warmth
+    const osc2 = audioCtx.createOscillator();
+    const noteGain2 = audioCtx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.value = freq * 2;
+    noteGain2.gain.setValueAtTime(0, t);
+    noteGain2.gain.linearRampToValueAtTime(velocity * 0.15, t + 0.02);
+    noteGain2.gain.exponentialRampToValueAtTime(0.001, t + duration * 0.7);
+    osc2.connect(noteGain2);
+    noteGain2.connect(gainNode);
+    osc2.start(t);
+    osc2.stop(t + duration);
+}
+
+function noteFreq(note) {
+    const notes = {
+        'C3': 130.81, 'D3': 146.83, 'E3': 164.81, 'F3': 174.61, 'G3': 196.00, 'A3': 220.00, 'B3': 246.94,
+        'C4': 261.63, 'D4': 293.66, 'E4': 329.63, 'F4': 349.23, 'G4': 392.00, 'A4': 440.00, 'B4': 493.88,
+        'C5': 523.25, 'D5': 587.33, 'E5': 659.25, 'F5': 698.46, 'G5': 783.99, 'A5': 880.00, 'B5': 987.77,
+        'Eb3': 155.56, 'Ab3': 207.65, 'Bb3': 233.08,
+        'Eb4': 311.13, 'Ab4': 415.30, 'Bb4': 466.16,
+        'Eb5': 622.25, 'Ab5': 830.61, 'Bb5': 932.33
+    };
+    return notes[note] || 440;
+}
+
+function playRomanticMelody() {
+    if (!audioCtx) createRomanticPiano();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    // Beautiful romantic melody in C major / A minor
+    const melody = [
+        // Phrase 1 - gentle ascending
+        { note: 'E4', time: 0.0, dur: 0.8, vel: 0.4 },
+        { note: 'G4', time: 0.7, dur: 0.6, vel: 0.35 },
+        { note: 'A4', time: 1.3, dur: 0.9, vel: 0.45 },
+        { note: 'G4', time: 2.1, dur: 0.5, vel: 0.3 },
+        { note: 'E4', time: 2.6, dur: 1.0, vel: 0.4 },
+
+        // Phrase 2 - tender descending
+        { note: 'C5', time: 3.8, dur: 1.0, vel: 0.5 },
+        { note: 'B4', time: 4.7, dur: 0.5, vel: 0.35 },
+        { note: 'A4', time: 5.2, dur: 0.8, vel: 0.4 },
+        { note: 'G4', time: 5.9, dur: 0.6, vel: 0.35 },
+        { note: 'F4', time: 6.5, dur: 1.2, vel: 0.45 },
+
+        // Phrase 3 - emotional peak
+        { note: 'E4', time: 7.8, dur: 0.5, vel: 0.35 },
+        { note: 'A4', time: 8.3, dur: 0.5, vel: 0.4 },
+        { note: 'C5', time: 8.8, dur: 0.6, vel: 0.5 },
+        { note: 'D5', time: 9.4, dur: 0.8, vel: 0.55 },
+        { note: 'E5', time: 10.2, dur: 1.4, vel: 0.5 },
+
+        // Phrase 4 - gentle resolution
+        { note: 'D5', time: 11.7, dur: 0.6, vel: 0.4 },
+        { note: 'C5', time: 12.3, dur: 0.7, vel: 0.45 },
+        { note: 'A4', time: 13.0, dur: 0.5, vel: 0.35 },
+        { note: 'G4', time: 13.5, dur: 0.8, vel: 0.4 },
+        { note: 'E4', time: 14.3, dur: 1.5, vel: 0.35 },
+
+        // Phrase 5 - dreamy ending
+        { note: 'F4', time: 16.0, dur: 0.7, vel: 0.3 },
+        { note: 'A4', time: 16.7, dur: 0.6, vel: 0.4 },
+        { note: 'G4', time: 17.3, dur: 0.8, vel: 0.45 },
+        { note: 'E4', time: 18.1, dur: 0.6, vel: 0.35 },
+        { note: 'C4', time: 18.7, dur: 2.0, vel: 0.4 },
+    ];
+
+    // Left hand chords (soft accompaniment)
+    const chords = [
+        { notes: ['C3', 'G3', 'E4'], time: 0.0, dur: 3.5, vel: 0.15 },
+        { notes: ['A3', 'E4', 'C4'], time: 3.8, dur: 3.0, vel: 0.15 },
+        { notes: ['F3', 'C4', 'A3'], time: 6.5, dur: 1.2, vel: 0.12 },
+        { notes: ['C3', 'G3', 'E4'], time: 7.8, dur: 2.5, vel: 0.15 },
+        { notes: ['F3', 'A3', 'C4'], time: 10.2, dur: 1.5, vel: 0.18 },
+        { notes: ['G3', 'B3', 'D4'], time: 11.7, dur: 2.0, vel: 0.15 },
+        { notes: ['A3', 'C4', 'E4'], time: 13.5, dur: 2.5, vel: 0.12 },
+        { notes: ['F3', 'A3', 'C4'], time: 16.0, dur: 2.0, vel: 0.12 },
+        { notes: ['C3', 'E3', 'G3'], time: 18.1, dur: 2.5, vel: 0.15 },
+    ];
+
+    const now = audioCtx.currentTime + 0.1;
+    const melodyLength = 21; // seconds per loop
+
+    // Play melody
+    melody.forEach(n => {
+        playNote(noteFreq(n.note), now + n.time, n.dur, n.vel);
+    });
+
+    // Play chords
+    chords.forEach(c => {
+        c.notes.forEach(note => {
+            playNote(noteFreq(note), now + c.time, c.dur, c.vel);
+        });
+    });
+
+    // Loop the melody
+    melodyInterval = setTimeout(() => {
+        if (musicPlaying) playRomanticMelody();
+    }, melodyLength * 1000);
+}
+
+function stopMusic() {
+    musicPlaying = false;
+    if (melodyInterval) {
+        clearTimeout(melodyInterval);
+        melodyInterval = null;
+    }
+}
+
+function startMusic() {
+    musicPlaying = true;
+    playRomanticMelody();
+}
 
 // === ENVELOPE CLICK → OPEN MAIN CONTENT ===
 document.getElementById('envelope').addEventListener('click', function () {
@@ -13,6 +190,13 @@ document.getElementById('envelope').addEventListener('click', function () {
 
     // Launch confetti!
     launchConfetti();
+
+    // Auto-play romantic piano music on user interaction
+    const toggle = document.getElementById('musicToggle');
+    const icon = document.getElementById('musicIcon');
+    startMusic();
+    toggle.classList.add('playing');
+    icon.textContent = '🎶';
 
     // Hide intro
     setTimeout(() => {
@@ -179,7 +363,7 @@ function initScrollReveal() {
         entries.forEach(entry => {
             if (entry.isIntersecting) {
                 entry.target.classList.add('reveal', 'visible');
-                
+
                 // Animate children with stagger
                 const cards = entry.target.querySelectorAll('.reason-card, .wish-card, .mosaic-item');
                 cards.forEach((card, index) => {
@@ -200,23 +384,18 @@ function initScrollReveal() {
 
 // === MUSIC TOGGLE ===
 function toggleMusic() {
-    const audio = document.getElementById('bgMusic');
     const toggle = document.getElementById('musicToggle');
     const icon = document.getElementById('musicIcon');
 
     if (musicPlaying) {
-        audio.pause();
+        stopMusic();
         toggle.classList.remove('playing');
         icon.textContent = '🎵';
     } else {
-        audio.play().catch(() => {
-            // Autoplay blocked — that's okay
-            console.log('Autoplay blocked by browser');
-        });
+        startMusic();
         toggle.classList.add('playing');
         icon.textContent = '🎶';
     }
-    musicPlaying = !musicPlaying;
 }
 
 // === TYPING EFFECT FOR LETTER (Optional Enhancement) ===
